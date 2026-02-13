@@ -1,0 +1,40 @@
+# Output directories
+*_output/
+test_output/
+
+# Log files
+logs/
+*.log
+*.err
+
+# SLURM outputs
+slurm-*.out
+slurm-*.err
+
+# Reference files (too large for git)
+references/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*~
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test data
+test_data/
+example_output/
