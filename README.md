@@ -438,16 +438,10 @@ For issues, questions, or contributions:
 
 ---
 
-## License
-
-MIT License - See LICENSE file for details
-
----
-
 ## Acknowledgments
 
 Pipeline design inspired by standard RNA-seq best practices and optimized for small RNA sequencing analysis. Special focus on miRNA detection and quantification in mouse models.
 
-**Development:** [Your name/institution]  
+**Development:** Hothri Moka  
 **Date:** February 2026  
-**Contact:** [Your email]
+
