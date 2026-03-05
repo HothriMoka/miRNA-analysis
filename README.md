@@ -449,15 +449,10 @@ Individual scripts also create per-sample logs in: `SAMPLE_output/logs/`
 **Annotations:** GENCODE vM38  
 **Tested on:** SLURM cluster with cpu/hmem/nice partitions  
 
-## License
+## Acknowledgments
 
-MIT License - Free to use and modify
-
-## Authors
-
-Developed for the Dong Lab bioinformatics core facility.
-
----
+**Development:** Hothri Moka  
+**Date:** February 2026  
 
 **For detailed documentation, see `docs/` directory**  
 **For troubleshooting, check log files first, then see `docs/MASTER_SCRIPT_GUIDE.md`**
