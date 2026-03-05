@@ -5,17 +5,17 @@
 #SBATCH --time=4:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=80G
-#SBATCH --partition=cpu
+#SBATCH --mem=64G
+#SBATCH --partition=hmem
 #
 # smRNA_analysis.sh - Small RNA-seq Analysis Pipeline
 # Optimized for Takara SMARTer smRNA-Seq Kit
 # Mouse genome (GRCm39, GENCODE M38)
 #
 # Resource requirements:
-#   - Memory: 48GB (for STAR alignment)
+#   - Memory: 64GB (for STAR alignment + buffer)
 #   - CPUs: 16 (parallel processing, max for cpu partition)
-#   - Time: ~30-60 min per sample
+#   - Time: ~1-2 hours per sample
 #
 # Usage:
 #   sbatch 02_smRNA_analysis.sh SAMPLE_NAME input.fastq.gz --threads 16
@@ -29,17 +29,17 @@ set -euo pipefail
 # LOAD REQUIRED MODULES
 # ============================================================================
 
-# Load required modules (suppress errors if already loaded)
-module load star/2.7.11a-pgsk3s4 rsem/1.3.3 subread/2.0.6 fastqc/0.12.1 samtools/1.17-xtpk2gu 2>/dev/null || true
-
-# Activate conda environment for cutadapt if available
+# Load conda environment FIRST (contains fixed RSEM with zlib-ng 2.2.5)
 if command -v conda &> /dev/null; then
     source $(conda info --base)/etc/profile.d/conda.sh 2>/dev/null || true
     conda activate smallrna-tools 2>/dev/null || true
 fi
 
+# Load cluster modules (RSEM will come from conda, not cluster)
+module load star/2.7.11a-pgsk3s4 subread/2.0.6 fastqc/0.12.1 2>/dev/null || true
+
 # Get script directory - use SLURM_SUBMIT_DIR when run via sbatch, otherwise use script location
-if [ -n "${SLURM_SUBMIT_DIR}" ]; then
+if [ -n "${SLURM_SUBMIT_DIR:-}" ]; then
     SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
 else
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,11 +59,12 @@ Required Arguments:
   input_fastq     Path to input FASTQ file (.fastq.gz or .fq.gz)
 
 Optional Arguments:
-  --threads INT   Number of threads (default: 20)
-  --output-dir    Output directory (default: <sample_name>_output)
+  --threads INT     Number of threads (default: 16)
+  --output-dir DIR  Output directory (default: <sample_name>_output)
+  --adapter SEQ     3' adapter sequence (required - set in Run_SmallRNA_Pipeline.sh)
 
 Example:
-  $0 Sample1 /path/to/sample.fastq.gz --threads 16
+  $0 Sample1 /path/to/sample.fastq.gz --threads 16 --adapter AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
 
 EOF
     exit 1
@@ -84,6 +85,7 @@ shift 2
 # Defaults (use SLURM allocation if available)
 THREADS="${SLURM_CPUS_PER_TASK:-16}"
 OUTPUT_DIR="${SAMPLE_NAME}_output"
+ADAPTER_SEQ=""  # must be set via --adapter
 
 # Parse optional arguments
 while [[ $# -gt 0 ]]; do
@@ -94,6 +96,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --output-dir)
             OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        --adapter)
+            ADAPTER_SEQ="$2"
             shift 2
             ;;
         --help|-h)
@@ -109,6 +115,13 @@ done
 # ============================================================================
 # VALIDATE INPUTS
 # ============================================================================
+
+if [[ -z "${ADAPTER_SEQ}" ]]; then
+    echo "ERROR: --adapter is required."
+    echo "       Set ADAPTER_SEQUENCE in Run_SmallRNA_Pipeline.sh and run via the orchestrator,"
+    echo "       or pass it directly: --adapter AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+    exit 1
+fi
 
 echo "========================================"
 echo "Small RNA-seq Analysis Pipeline"
@@ -187,7 +200,7 @@ log "========================================="
 log ""
 
 # ============================================================================
-# STEP 1: ADAPTER TRIMMING (Takara SMARTer smRNA-Seq Protocol)
+# STEP 1: ADAPTER TRIMMING
 # ============================================================================
 
 log "=== Step 1: Adapter Trimming ==="
@@ -198,16 +211,15 @@ TRIM_REPORT="${OUTPUT_DIR}/01_trimmed/${SAMPLE_NAME}_cutadapt_report.txt"
 if [[ -f "${TRIMMED_FQ}" ]]; then
     log "Trimmed FASTQ already exists, skipping: ${TRIMMED_FQ}"
 else
-    log "Running cutadapt with Takara SMARTer smRNA-Seq adapters..."
+    log "Running cutadapt (adapter: ${ADAPTER_SEQ})..."
     
     cutadapt \
         -j ${THREADS} \
-        -u 3 \
-        -a "AAAAAAAAAA" \
+        -a "${ADAPTER_SEQ}" \
+        --overlap 10 \
+        --discard-untrimmed \
         -m 15 \
         -M 50 \
-        --max-n 0 \
-        --nextseq-trim 20 \
         --report=minimal \
         -o ${TRIMMED_FQ} \
         ${INPUT_FASTQ} \
@@ -264,14 +276,17 @@ if [[ -f "${ALIGNED_BAM}" ]]; then
 else
     log "Running STAR alignment (optimized for small RNA)..."
     # Output SAM to completely avoid bgzf bug in STAR 2.7.11a
+    # Also generate transcriptome BAM for RSEM
     STAR --genomeDir ${STAR_INDEX} \
         --readFilesIn ${TRIMMED_FQ} \
         --readFilesCommand zcat \
         --outFileNamePrefix ${OUTPUT_DIR}/02_aligned/${SAMPLE_NAME}_ \
         --runThreadN ${THREADS} \
         --outSAMtype SAM \
+        --quantMode TranscriptomeSAM \
         --outFilterMultimapNmax 100 \
         --winAnchorMultimapNmax 100 \
+        --outSAMmultNmax 1 \
         --outFilterMismatchNmax 2 \
         --outFilterMatchNmin 16 \
         --alignIntronMax 1 \
@@ -361,31 +376,31 @@ RSEM_PREFIX="${OUTPUT_DIR}/03_counts/${SAMPLE_NAME}_RSEM"
 
 # Initialize RSEM success flag
 RSEM_SUCCESS=false
+TRANSCRIPTOME_BAM="${OUTPUT_DIR}/02_aligned/${SAMPLE_NAME}_Aligned.toTranscriptome.out.bam"
 
 if [[ -f "${RSEM_OUT}" && -s "${RSEM_OUT}" ]]; then
     log "RSEM output already exists and is valid, skipping"
     RSEM_SUCCESS=true
+elif [[ ! -f "${TRANSCRIPTOME_BAM}" ]]; then
+    log "WARNING: Transcriptome BAM not found (${TRANSCRIPTOME_BAM})"
+    log "  STAR may not have generated it. Skipping RSEM."
 else
-    log "Running RSEM (handles multi-mapping with EM algorithm)..."
+    log "Running RSEM (with conda's fixed zlib-ng - no bgzf bug!)..."
+    log "  Using transcriptome BAM: ${TRANSCRIPTOME_BAM}"
     
-    # Temporarily disable errexit to handle RSEM failure gracefully
-    set +e
     rsem-calculate-expression \
-        --bowtie2 \
-        --strandedness none \
-        --bowtie2-k 100 \
-        -p ${THREADS} \
+        --bam \
         --no-bam-output \
+        -p ${THREADS} \
         --seed 12345 \
-        ${TRIMMED_FQ} \
+        ${TRANSCRIPTOME_BAM} \
         ${RSEM_INDEX} \
         ${RSEM_PREFIX} \
         > ${OUTPUT_DIR}/logs/rsem.log 2>&1
     RSEM_EXIT_CODE=$?
-    set -e
     
     if [[ ${RSEM_EXIT_CODE} -eq 0 ]]; then
-        log "✓ RSEM complete!"
+        log "✓ RSEM complete! (bgzf bug fixed with conda)"
         RSEM_SUCCESS=true
         
         # Count genes with TPM > 0
@@ -481,9 +496,13 @@ if [[ "${RSEM_SUCCESS}" == "true" ]]; then
     # Get top 10 miRNAs
     log ""
     log "Top 10 most abundant miRNAs (by RSEM TPM):"
-    awk -F'\t' 'NR>1 && $3~/miRNA/ && $5>0' ${RSEM_TPM} | \
+    # Temporarily disable pipefail for this complex pipeline
+    set +o pipefail
+    TOP_MIRNAS=$(awk -F'\t' 'NR>1 && $3~/miRNA/ && $5>0' ${RSEM_TPM} | \
         sort -t$'\t' -k5 -nr | head -10 | \
-        awk -F'\t' '{printf "  %-20s %10.2f TPM\n", $2, $5}' | tee -a ${LOGFILE}
+        awk -F'\t' '{printf "  %-20s %10.2f TPM\n", $2, $5}')
+    set -o pipefail
+    echo "${TOP_MIRNAS}" | tee -a ${LOGFILE}
 else
     log "Skipping RSEM miRNA extraction (RSEM did not complete)"
     log ""
@@ -525,7 +544,7 @@ Input reads: $(zcat ${INPUT_FASTQ} | wc -l | awk '{print $1/4}')
 
 Trimming (Step 1):
 ------------------
-Adapter: Takara SMARTer smRNA-Seq (AAAAAAAAAA)
+Adapter: ${ADAPTER_SEQ}
 TSO trimmed: 3 bp from 5' end
 Reads after trimming: $(zcat ${TRIMMED_FQ} | wc -l | awk '{print $1/4}')
 
@@ -609,6 +628,70 @@ fi
 log ""
 
 # ============================================================================
+# STEP 10: GENERATE RNA DISTRIBUTION 2-SUBPLOT PLOT
+# ============================================================================
+
+log "=== Step 10: Generate RNA Distribution Plot (2 Subplots) ==="
+
+RNA_DIST_OUTPUT="${OUTPUT_DIR}/04_expression/${SAMPLE_NAME}_RNA_distribution_2subplots"
+
+if [[ -f "${RNA_DIST_OUTPUT}.pdf" ]]; then
+    log "RNA distribution plot already exists, skipping"
+else
+    log "Generating RNA distribution plot (expression-weighted vs count-based)..."
+    
+    python ${SCRIPTS_DIR}/plot_RNA_distribution_2subplots.py \
+        --input ${FC_TPM} \
+        --output ${RNA_DIST_OUTPUT} \
+        --sample_name ${SAMPLE_NAME} \
+        > ${OUTPUT_DIR}/logs/rna_distribution.log 2>&1
+    
+    if [[ $? -eq 0 ]]; then
+        log "✓ RNA distribution plot generated!"
+        log "  PDF: ${RNA_DIST_OUTPUT}.pdf"
+        log "  PNG: ${RNA_DIST_OUTPUT}.png"
+    else
+        log "WARNING: RNA distribution plot failed (check logs/rna_distribution.log)"
+    fi
+fi
+
+log ""
+
+# ============================================================================
+# STEP 11: GENERATE TOP EXPRESSED GENES PLOT
+# ============================================================================
+
+log "=== Step 11: Generate Top Expressed Genes Plot ==="
+
+TOP_GENES_PDF="${OUTPUT_DIR}/04_expression/${SAMPLE_NAME}_top_expressed_genes.pdf"
+TOP_GENES_PNG="${OUTPUT_DIR}/04_expression/${SAMPLE_NAME}_top_expressed_genes.png"
+
+if [[ -f "${TOP_GENES_PDF}" ]]; then
+    log "Top genes plot already exists, skipping"
+else
+    log "Generating top expressed genes plot..."
+    
+    python ${SCRIPTS_DIR}/plot_top_expressed_genes.py \
+        --input ${FC_TPM} \
+        --output_pdf ${TOP_GENES_PDF} \
+        --output_png ${TOP_GENES_PNG} \
+        --genes_per_type 3 \
+        --total_genes 50 \
+        --sample_name ${SAMPLE_NAME} \
+        > ${OUTPUT_DIR}/logs/top_genes.log 2>&1
+    
+    if [[ $? -eq 0 ]]; then
+        log "✓ Top expressed genes plot generated!"
+        log "  PDF: ${TOP_GENES_PDF}"
+        log "  PNG: ${TOP_GENES_PNG}"
+    else
+        log "WARNING: Top genes plot failed (check logs/top_genes.log)"
+    fi
+fi
+
+log ""
+
+# ============================================================================
 # PIPELINE COMPLETION
 # ============================================================================
 
@@ -616,14 +699,18 @@ log "========================================="
 log "Pipeline completed successfully!"
 log "Output directory: ${OUTPUT_DIR}"
 log "Summary report: ${SUMMARY}"
-log "Gene type plot: ${BARPLOT_OUTPUT}"
 log "========================================="
+log ""
+log "Generated Plots:"
+log "  - Gene type distribution: ${BARPLOT_OUTPUT}"
+log "  - RNA composition (2 subplots): ${RNA_DIST_OUTPUT}.pdf"
+log "  - Top expressed genes: ${TOP_GENES_PDF}"
 log ""
 log "Next steps:"
 log "  1. Review summary: cat ${SUMMARY}"
 log "  2. Check miRNAs: less ${OUTPUT_DIR}/04_expression/${SAMPLE_NAME}_miRNAs_only_featureCounts.tsv"
 log "  3. View QC report: open ${OUTPUT_DIR}/05_qc/${SAMPLE_NAME}_trimmed_fastqc.html"
-log "  4. View gene types: open ${BARPLOT_OUTPUT}"
+log "  4. View plots: open ${OUTPUT_DIR}/04_expression/*.pdf"
 log ""
 
 exit 0

@@ -1,0 +1,142 @@
+STAR version=2.7.11a
+STAR compilation time,server,dir=2024-01-09T13:38:31+00:00 gpu001.jex:/opt/software/.spack/build/root/spack-stage-star-2.7.11a-pgsk3s4s37hxjtidktqtnsh3qwfhjojz/spack-src/source
+STAR git: 
+##### Command Line:
+STAR --runThreadN 8 --genomeDir /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/references/indices/STAR --readFilesIn /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz --readFilesCommand zcat --outFileNamePrefix /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --outSAMunmapped Within --outFilterMismatchNmax 2
+##### Initial USER parameters from Command Line:
+outFileNamePrefix                 /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test_
+###### All USER parameters from Command Line:
+runThreadN                    8     ~RE-DEFINED
+genomeDir                     /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/references/indices/STAR     ~RE-DEFINED
+readFilesIn                   /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz        ~RE-DEFINED
+readFilesCommand              zcat        ~RE-DEFINED
+outFileNamePrefix             /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test_     ~RE-DEFINED
+outSAMtype                    BAM   Unsorted        ~RE-DEFINED
+quantMode                     TranscriptomeSAM        ~RE-DEFINED
+outSAMunmapped                Within        ~RE-DEFINED
+outFilterMismatchNmax         2     ~RE-DEFINED
+##### Finished reading parameters from all sources
+
+##### Final user re-defined parameters-----------------:
+runThreadN                        8
+genomeDir                         /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/references/indices/STAR
+readFilesIn                       /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz   
+readFilesCommand                  zcat   
+outFileNamePrefix                 /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test_
+outSAMtype                        BAM   Unsorted   
+outSAMunmapped                    Within   
+outFilterMismatchNmax             2
+quantMode                         TranscriptomeSAM   
+
+-------------------------------
+##### Final effective command line:
+STAR   --runThreadN 8   --genomeDir /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/references/indices/STAR   --readFilesIn /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz      --readFilesCommand zcat      --outFileNamePrefix /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test_   --outSAMtype BAM   Unsorted      --outSAMunmapped Within      --outFilterMismatchNmax 2   --quantMode TranscriptomeSAM   
+----------------------------------------
+
+Number of fastq files for each mate = 1
+
+   Input read files for mate 1 :
+-rwxr-xr-x 1 hmoka2 domain users 226223082 Jan 16 09:56 /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz
+
+   readsCommandsFile:
+exec > "/home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test__STARtmp/tmp.fifo.read1"
+echo FILE 0
+zcat      "/home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz"
+
+ParametersSolo: --soloCellFilterType CellRanger2.2 filtering parameters:  3000 0.99 10
+Finished loading and checking parameters
+Reading genome generation parameters:
+### STAR   --runMode genomeGenerate      --runThreadN 8   --genomeDir /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/references/indices/STAR   --genomeFastaFiles /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/references/genome/GRCm39.genome.fa      --genomeSAindexNbases 13   --limitGenomeGenerateRAM 110000000000   --sjdbGTFfile /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/references/annotations/gencode.vM38.annotation.gtf   --sjdbOverhang 69
+### GstrandBit=32
+versionGenome                 2.7.4a     ~RE-DEFINED
+genomeType                    Full     ~RE-DEFINED
+genomeFastaFiles              /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/references/genome/GRCm39.genome.fa        ~RE-DEFINED
+genomeSAindexNbases           13     ~RE-DEFINED
+genomeChrBinNbits             18     ~RE-DEFINED
+genomeSAsparseD               1     ~RE-DEFINED
+genomeTransformType           None     ~RE-DEFINED
+genomeTransformVCF            -     ~RE-DEFINED
+sjdbOverhang                  69     ~RE-DEFINED
+sjdbFileChrStartEnd           -        ~RE-DEFINED
+sjdbGTFfile                   /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/references/annotations/gencode.vM38.annotation.gtf     ~RE-DEFINED
+sjdbGTFchrPrefix              -     ~RE-DEFINED
+sjdbGTFfeatureExon            exon     ~RE-DEFINED
+sjdbGTFtagExonParentTranscripttranscript_id     ~RE-DEFINED
+sjdbGTFtagExonParentGene      gene_id     ~RE-DEFINED
+sjdbInsertSave                Basic     ~RE-DEFINED
+genomeFileSizes               2795708736   22370383913        ~RE-DEFINED
+Genome version is compatible with current STAR
+Number of real (reference) chromosomes= 61
+1	chr1	195154279	0
+2	chr2	181755017	195297280
+3	chr3	159745316	377225216
+4	chr4	156860686	537133056
+5	chr5	151758149	694157312
+6	chr6	149588044	845938688
+7	chr7	144995196	995622912
+8	chr8	130127694	1140850688
+9	chr9	124359700	1271136256
+10	chr10	130530862	1395654656
+11	chr11	121973369	1526202368
+12	chr12	120092757	1648361472
+13	chr13	120883175	1768685568
+14	chr14	125139656	1889796096
+15	chr15	104073951	2015100928
+16	chr16	98008968	2119434240
+17	chr17	95294699	2217476096
+18	chr18	90720763	2312896512
+19	chr19	61420004	2403860480
+20	chrX	169476592	2465464320
+21	chrY	91455967	2635071488
+22	chrM	16299	2726559744
+23	GL456210.1	169725	2726821888
+24	GL456211.1	241735	2727084032
+25	GL456212.1	153618	2727346176
+26	GL456219.1	175968	2727608320
+27	GL456221.1	206961	2727870464
+28	GL456233.2	559103	2728132608
+29	GL456239.1	40056	2728919040
+30	GL456354.1	195993	2729181184
+31	GL456359.1	22974	2729443328
+32	GL456360.1	31704	2729705472
+33	GL456366.1	47073	2729967616
+34	GL456367.1	42057	2730229760
+35	GL456368.1	20208	2730491904
+36	GL456370.1	26764	2730754048
+37	GL456372.1	28664	2731016192
+38	GL456378.1	31602	2731278336
+39	GL456379.1	72385	2731540480
+40	GL456381.1	25871	2731802624
+41	GL456382.1	23158	2732064768
+42	GL456383.1	38659	2732326912
+43	GL456385.1	35240	2732589056
+44	GL456387.1	24685	2732851200
+45	GL456389.1	28772	2733113344
+46	GL456390.1	24668	2733375488
+47	GL456392.1	23629	2733637632
+48	GL456394.1	24323	2733899776
+49	GL456396.1	21240	2734161920
+50	JH584295.1	1976	2734424064
+51	JH584296.1	199368	2734686208
+52	JH584297.1	205776	2734948352
+53	JH584298.1	184189	2735210496
+54	JH584299.1	953012	2735472640
+55	JH584300.1	182347	2736521216
+56	JH584301.1	259875	2736783360
+57	JH584302.1	155838	2737045504
+58	JH584303.1	158099	2737307648
+59	JH584304.1	114452	2737569792
+60	MU069434.1	8412	2737831936
+61	MU069435.1	31129	2738094080
+--sjdbOverhang = 69 taken from the generated genome
+Started loading the genome: Mon Feb 16 13:51:02 2026
+
+Genome: size given as a parameter = 2795708736
+SA: size given as a parameter = 22370383913
+SAindex: size given as a parameter = 1
+Read from SAindex: pGe.gSAindexNbases=13  nSAi=89478484
+nGenome=2795708736;  nSAbyte=22370383913
+GstrandBit=32   SA number of indices=5423123372
+Shared memory is not used for genomes. Allocated a private copy of the genome.
+Genome file size: 2795708736 bytes; state: good=1 eof=0 fail=0 bad=0
+Loading Genome ... 

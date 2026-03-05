@@ -1,0 +1,3 @@
+exec > "/home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline/test_rsem_transcriptome/test__STARtmp/tmp.fifo.read1"
+echo FILE 0
+zcat      "/home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/260115_VH00409_52_AAHJGFTM5/204913_S13_R1_001.fastq.gz"

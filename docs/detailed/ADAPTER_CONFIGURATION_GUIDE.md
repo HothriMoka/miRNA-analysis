@@ -1,0 +1,355 @@
+# Adapter Configuration Guide
+
+## Why Adapter Configuration Matters
+
+Different small RNA-seq library preparation kits add different adapter sequences to your RNA molecules. These adapters must be **trimmed off** before alignment, and using the wrong adapter sequence will result in:
+
+❌ **Low alignment rates** (adapters not properly removed)  
+❌ **Incorrect read lengths** (partial adapter removal)  
+❌ **Poor quantification accuracy** (reads discarded or misaligned)  
+
+✅ **Correct adapter = Good data quality**
+
+## How to Configure the Adapter
+
+### Step 1: Open the Master Script
+
+```bash
+cd /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline
+nano Run_SmallRNA_Pipeline.sh
+```
+
+### Step 2: Find the ADAPTER_SEQUENCE Line
+
+Look for this section near the top (around line 67-78):
+
+```bash
+# === ADAPTER SEQUENCE ===
+# ⚠️  IMPORTANT: Change this based on your library prep kit!
+# This is the 3' adapter sequence that will be trimmed from your reads.
+#
+# Choose the appropriate adapter for your kit:
+
+# Illumina TruSeq Small RNA (most common)
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+
+# Other common adapters (uncomment the one you need):
+# ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCT"           # NEBNext Small RNA
+# ADAPTER_SEQUENCE="AAAAAAAAAA"                       # Takara SMARTer (polyA tail)
+# ADAPTER_SEQUENCE="AACTGTAGGCACCATCAAT"             # QIAseq miRNA
+# ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"           # Illumina Small RNA v1.5
+# ADAPTER_SEQUENCE="YOUR_CUSTOM_ADAPTER_HERE"        # Custom adapter
+```
+
+### Step 3: Choose Your Adapter
+
+**Comment out** the default line (add `#` at the beginning) and **uncomment** your kit's line:
+
+**Example for NEBNext:**
+```bash
+# ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # TruSeq (commented out)
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCT"                # NEBNext (active)
+```
+
+### Step 4: Save and Run
+
+```bash
+# Save file (Ctrl+O, Enter, Ctrl+X in nano)
+
+# Run pipeline
+bash Run_SmallRNA_Pipeline.sh
+```
+
+The adapter will be automatically used for **all samples** in your batch.
+
+## Common Library Prep Kits
+
+### Illumina TruSeq Small RNA Library Prep Kit
+**Most widely used kit**
+
+```bash
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
+```
+
+**Use for:**
+- Illumina TruSeq Small RNA Library Prep Kit
+- Standard small RNA sequencing
+- Most commercial sequencing services
+
+**References:**
+- [Illumina Adapter Sequences](https://support-docs.illumina.com/SHARE/AdapterSequences/)
+
+---
+
+### NEBNext Small RNA Library Prep Kit
+**Popular alternative to Illumina**
+
+```bash
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCT"
+```
+
+**Use for:**
+- NEBNext Small RNA Library Prep Set
+- NEB multiplex small RNA library prep
+
+**Features:**
+- Shorter adapter (25 nt)
+- Compatible with multiplexing
+- Widely used in research labs
+
+---
+
+### Takara SMARTer smRNA-Seq Kit
+**Template-switching based method**
+
+```bash
+ADAPTER_SEQUENCE="AAAAAAAAAA"
+```
+
+**Use for:**
+- Takara SMARTer smRNA-Seq Kit
+- SMART technology-based prep
+- Low input samples
+
+**Special note:**
+- Uses polyA tail (10 A's) instead of synthetic adapter
+- Good for degraded RNA or low input
+- Template-switching mechanism
+
+---
+
+### QIAseq miRNA Library Kit
+**QIAGEN's solution**
+
+```bash
+ADAPTER_SEQUENCE="AACTGTAGGCACCATCAAT"
+```
+
+**Use for:**
+- QIAseq miRNA Library Kit
+- QIAseq miRNA Quantification
+
+**Features:**
+- Unique molecular identifiers (UMIs) available
+- High specificity for miRNAs
+
+---
+
+### Illumina Small RNA v1.5
+**Older Illumina kit**
+
+```bash
+ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"
+```
+
+**Use for:**
+- TruSeq Small RNA Library Prep Kit v1.5 (legacy)
+- Older datasets
+
+**Note:** This is an older kit version. Most new datasets use TruSeq v3 (see first entry).
+
+---
+
+### Custom or Unknown Adapter
+
+**If your kit isn't listed, or you're analyzing published data:**
+
+```bash
+ADAPTER_SEQUENCE="YOUR_CUSTOM_ADAPTER_HERE"
+```
+
+See section below on "How to Find Your Adapter Sequence".
+
+## How to Find Your Adapter Sequence
+
+### Method 1: Check Kit Documentation
+
+1. Find your library prep kit manual/documentation
+2. Look for "adapter sequences" or "oligonucleotide sequences"
+3. You need the **3' adapter** or **Read 1 adapter** sequence
+4. Copy the sequence exactly (5' to 3')
+
+### Method 2: Run FastQC
+
+If you have raw FASTQ files:
+
+```bash
+# Load FastQC
+module load fastqc
+
+# Run on raw data (before trimming)
+fastqc your_sample_R1.fastq.gz
+
+# Open HTML report
+firefox your_sample_R1_fastqc.html
+```
+
+**Look at "Overrepresented sequences" section:**
+- The most abundant sequence is likely your adapter
+- May show partial adapter sequence
+- Compare with known adapter sequences
+
+### Method 3: Check the Paper/Dataset
+
+For published data:
+1. Read the Methods section
+2. Look for "Library preparation" subsection
+3. Note the kit name → look up adapter sequence
+4. Check supplementary materials
+
+### Method 4: Contact Sequencing Core
+
+If data was generated by a sequencing facility:
+- Email the core facility
+- Ask: "What 3' adapter sequence was used for library prep?"
+- Mention the library prep kit if known
+
+## Verifying Correct Adapter
+
+After running the pipeline, check trimming statistics:
+
+```bash
+# View cutadapt report
+cat OUTPUT_DIR/SAMPLE_output/01_trimmed/SAMPLE_cutadapt_report.txt
+```
+
+**Good indicators:**
+```
+=== Adapter Trimming Stats ===
+Reads with adapters: 15,432,891 (92.5%)    ← High percentage is good (>80%)
+Reads that were too short: 234,123 (1.4%)  ← Low percentage is good (<5%)
+Reads written: 14,987,654 (89.8%)          ← Most reads retained
+```
+
+**Bad indicators:**
+```
+Reads with adapters: 1,432,891 (8.5%)      ← Very low = wrong adapter
+Reads that were too short: 8,234,123 (49%) ← Very high = wrong adapter or settings
+```
+
+**What to do if numbers look wrong:**
+1. Double-check your adapter sequence
+2. Try FastQC method above to identify adapter
+3. Check kit documentation again
+4. Consider running with default TruSeq adapter (most common)
+
+## Advanced: Multiple Adapters
+
+Some kits or multiplexed libraries may have multiple adapters. For now, this pipeline supports **one adapter sequence** that is applied to all samples.
+
+**If you have samples with different adapters:**
+
+### Option 1: Run Pipeline Multiple Times
+```bash
+# Edit adapter for Kit A samples
+ADAPTER_SEQUENCE="ADAPTER_A"
+bash Run_SmallRNA_Pipeline.sh
+
+# Edit adapter for Kit B samples
+ADAPTER_SEQUENCE="ADAPTER_B"
+bash Run_SmallRNA_Pipeline.sh
+```
+
+### Option 2: Run Samples Individually
+```bash
+# For each sample with different adapter:
+bash 02_smRNA_analysis.sh SAMPLE1 input1.fastq.gz --adapter "ADAPTER_A"
+bash 02_smRNA_analysis.sh SAMPLE2 input2.fastq.gz --adapter "ADAPTER_B"
+```
+
+## Technical Details
+
+### Where the Adapter is Used
+
+The adapter sequence is passed to `cutadapt` during Step 1 (trimming):
+
+```bash
+cutadapt \
+    -j ${THREADS} \
+    -u 3 \                              # Remove 3bp from 5' end (optional)
+    -a "${ADAPTER_SEQ}" \               # YOUR ADAPTER HERE
+    -m 15 \                             # Min length 15bp (discard shorter)
+    -M 50 \                             # Max length 50bp (keep small RNAs)
+    --max-n 0 \                         # Remove reads with N's
+    --nextseq-trim 20 \                 # Quality trim NextSeq data
+    -o ${TRIMMED_FQ} \
+    ${INPUT_FASTQ}
+```
+
+### Parameters Explained
+
+- `-a ADAPTER`: 3' adapter to remove
+- `-u 3`: Remove 3bp from 5' end (removes random primer bases in some kits)
+- `-m 15`: Minimum read length after trimming
+- `-M 50`: Maximum read length (small RNAs are typically 18-30bp)
+- `--nextseq-trim 20`: Quality-based trimming for NextSeq/NovaSeq data
+
+### Why These Settings?
+
+**Small RNA characteristics:**
+- miRNAs: 18-24 nt (most common: 21-22 nt)
+- piRNAs: 24-32 nt
+- tRNAs: ~70-90 nt (but fragments are 18-35 nt)
+- Other small RNAs: 18-200 nt
+
+Settings are optimized for miRNA/small RNA analysis:
+- Keep reads 15-50bp (after adapter removal)
+- This captures miRNAs, small tRNA fragments, and other small RNAs
+- Discards degraded long RNAs and adapter dimers
+
+## Troubleshooting
+
+### Problem: Low Adapter Detection (<50%)
+
+**Possible causes:**
+1. Wrong adapter sequence
+2. High-quality library (little adapter read-through)
+3. Long insert sizes
+
+**Solutions:**
+- Verify adapter sequence with FastQC
+- Check alignment rates (if >70%, adapter is probably fine)
+- Review kit documentation
+
+### Problem: Too Many Short Reads Discarded (>20%)
+
+**Possible causes:**
+1. Wrong adapter causing over-trimming
+2. Poor library quality
+3. Adapter dimers in library
+
+**Solutions:**
+- Verify adapter sequence
+- Check raw FastQC report for adapter dimers
+- Consider adjusting `-m 15` parameter if needed
+
+### Problem: Low Alignment Rate (<50%)
+
+**Possible causes:**
+1. Wrong adapter (reads still have adapter sequences)
+2. Wrong species/genome
+3. Poor library quality
+
+**Solutions:**
+1. Check trimming stats first (see above)
+2. Verify mouse samples (not human, rat, etc.)
+3. Run FastQC on trimmed reads to verify adapter removal
+
+## Summary
+
+✅ **Adapter configuration is critical for data quality**  
+✅ **Easy to configure in one place (master script)**  
+✅ **Applied to all samples automatically**  
+✅ **Default is Illumina TruSeq (most common)**  
+✅ **Verify adapter by checking trimming statistics**  
+
+**Most important takeaway:**
+> The ADAPTER_SEQUENCE in Run_SmallRNA_Pipeline.sh must match your library prep kit. When in doubt, use Illumina TruSeq (most common) or check with FastQC.
+
+---
+
+**Need help?** Check your:
+1. Library prep kit documentation
+2. FastQC "Overrepresented sequences" report
+3. Sequencing core facility or collaborators
+4. Published paper methods (for public data)

@@ -41,7 +41,7 @@ source $(conda info --base)/etc/profile.d/conda.sh
 conda activate smallrna-tools
 
 # 2. Build references (First Time Only, ~1-2 hours)
-./01_prepare_mouse_references.sh 20
+./01_prepare_mouse_references.sh 16
 
 # 3. Run single sample
 ./02_smRNA_analysis.sh 204925 \

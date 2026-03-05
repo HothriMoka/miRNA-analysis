@@ -1,453 +1,463 @@
 # Mouse Small RNA-seq Analysis Pipeline
 
-A robust, cluster-optimized pipeline for small RNA sequencing analysis in mouse (GRCm39/GENCODE M38), specifically designed for Takara SMARTer smRNA-Seq Kit data.
+A complete, automated pipeline for mouse small RNA sequencing data analysis with a focus on miRNA quantification and quality control.
 
 ## Overview
 
-This pipeline provides comprehensive analysis of small RNA sequencing data with a focus on miRNA detection and quantification. It uses standard RNA-seq quantification tools (featureCounts, RSEM) and generates publication-ready outputs including QC reports, expression matrices, and gene type distribution visualizations.
+This pipeline processes small RNA-seq data from raw FASTQ files through alignment, quantification, and visualization. It uses RSEM's EM algorithm for accurate miRNA quantification and generates comprehensive quality control plots.
 
-**Key Features:**
-- ✅ Mouse genome (GRCm39/GENCODE M38) annotation
-- ✅ Takara SMARTer smRNA-Seq adapter trimming
-- ✅ SLURM cluster optimization
-- ✅ Comprehensive QC and reporting
-- ✅ miRNA-specific extraction and quantification
-- ✅ Gene type distribution visualization
-- ✅ TPM normalization
-- ✅ Handles 2,201 annotated mouse miRNAs
-
----
+**Compatible with:** All small RNA-seq library prep kits (adapter configurable)  
+**Genome:** Mouse GRCm39 (GENCODE vM38)  
+**Compute:** SLURM cluster with automatic job dependencies  
 
 ## Quick Start
 
-### 1. Clone Repository
+### 1. Edit Configuration
 
 ```bash
-git clone [your-repo-url]
-cd mouse_smallRNA-pipeline
+cd /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_smallRNA-pipeline
+nano Run_SmallRNA_Pipeline.sh
 ```
 
-### 2. Prepare References (One-time Setup)
+Edit these lines at the top:
 
 ```bash
-# Submit as SLURM job
-sbatch 01_prepare_mouse_references.sh
+# Where your FASTQ files are
+INPUT_FASTQ_DIR="/path/to/your/fastq/files"
 
-# Or run interactively
-bash 01_prepare_mouse_references.sh
+# Where to save results
+OUTPUT_BASE_DIR="/home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_miRNA"
+
+# ⚠️ IMPORTANT: Set the adapter for YOUR library prep kit!
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # Illumina TruSeq (most common)
+
+# Other options provided in the script:
+# - NEBNext Small RNA:        AGATCGGAAGAGCACACGTCT
+# - Takara SMARTer:           AAAAAAAAAA
+# - QIAseq miRNA:             AACTGTAGGCACCATCAAT
+# - Illumina Small RNA v1.5:  TGGAATTCTCGGGTGCCAAGG
 ```
 
-**Resources:** 16 CPUs, 120GB RAM, ~2-3 hours  
-**Output:** Creates `references/` directory (~31 GB) with genome, annotations, and indices
-
-### 3. Analyze Single Sample
+### 2. First Time: Build References
 
 ```bash
-# Create output directory and logs
-mkdir -p my_analysis/logs
-
-# Submit job
-sbatch 02_smRNA_analysis.sh sample_name /path/to/sample.fastq.gz
-
-# Or run interactively
-bash 02_smRNA_analysis.sh sample_name /path/to/sample.fastq.gz
+bash Run_SmallRNA_Pipeline.sh --build-references
 ```
 
-**Resources:** 16 CPUs, 80GB RAM, ~1-2 min/sample
+⚠️ **Important:** Use `bash`, NOT `sbatch`! This script orchestrates job submissions.
 
-### 4. Batch Process Multiple Samples
+This downloads the mouse genome and builds indices (~2-4 hours, only needed once).
+
+### 3. Process Your Samples
 
 ```bash
-# Create analysis directory
-mkdir -p /path/to/analysis_dir
-cd /path/to/analysis_dir
-
-# Create symlinks to pipeline resources
-ln -s /path/to/mouse_smallRNA-pipeline/references ./references
-ln -s /path/to/mouse_smallRNA-pipeline/scripts ./scripts
-mkdir -p logs
-
-# Submit jobs for all samples
-for fastq in /path/to/fastq_dir/*.fastq.gz; do
-    sample=$(basename "$fastq" | sed 's/_R1_001.fastq.gz$//')
-    sbatch --output="logs/smRNA_%j_${sample}.log" \
-           --error="logs/smRNA_%j_${sample}.err" \
-           /path/to/mouse_smallRNA-pipeline/02_smRNA_analysis.sh \
-           "${sample}" "${fastq}"
-done
+bash Run_SmallRNA_Pipeline.sh
 ```
 
-See `SLURM_GUIDE.md` for detailed instructions.
+⚠️ **Important:** Use `bash`, NOT `sbatch`!
 
----
+That's it! The pipeline will automatically:
+- Process all FASTQ files in your input directory
+- Run RSEM quantification
+- Generate BigWig coverage files
+- Create quality control plots
+- Handle all job dependencies
 
-## Pipeline Workflow
+## What You Get
 
-```
-Input FASTQ
-    ↓
-[1] Adapter Trimming (cutadapt)
-    ├─ Remove 3bp TSO (Template Switching Oligo)
-    ├─ Trim polyA adapter sequence
-    └─ Quality filtering (min length 15bp)
-    ↓
-[2] Quality Control (FastQC)
-    └─ Generate QC reports
-    ↓
-[3] Genome Alignment (STAR)
-    ├─ Small RNA optimized parameters
-    ├─ No intron mapping (--alignIntronMax 1)
-    └─ End-to-end alignment
-    ↓
-[4] Read Quantification
-    ├─ featureCounts: Gene-level counts
-    └─ RSEM: Isoform-level (optional)
-    ↓
-[5] TPM Normalization
-    └─ Transcripts Per Million
-    ↓
-[6] miRNA Extraction
-    ├─ Filter for miRNA gene type
-    ├─ Identify top expressed miRNAs
-    └─ Generate miRNA-specific tables
-    ↓
-[7] Gene Type Visualization
-    ├─ Barplots of gene biotypes
-    └─ Distribution analysis
-    ↓
-[8] Comprehensive Report
-    └─ Analysis summary with all metrics
-```
-
----
-
-## Output Structure
-
-Each sample generates organized results:
+For each sample, the pipeline generates:
 
 ```
-{sample}_output/
-├── 01_trimmed/
-│   ├── {sample}_trimmed.fq.gz              # Adapter-trimmed reads
-│   └── {sample}_trimming_report.txt        # Trimming statistics
-├── 02_aligned/
-│   ├── {sample}_Aligned.sortedByCoord.out.bam  # Sorted BAM
-│   ├── {sample}_Log.final.out              # STAR alignment stats
-│   └── {sample}_Log.out                    # Detailed STAR log
-├── 03_counts/
-│   ├── {sample}_featureCounts.txt          # featureCounts output
-│   ├── {sample}_featureCounts.txt.summary  # Count summary
-│   └── {sample}_RSEM.genes.results         # RSEM output (optional)
+SAMPLE_NAME_output/
 ├── 04_expression/
-│   ├── {sample}_featureCounts_TPM.tsv      # TPM normalized counts
-│   ├── {sample}_miRNAs_only_featureCounts.tsv  # miRNA subset
-│   ├── {sample}_GeneType_Barplot.pdf       # Gene type visualization
-│   └── {sample}_RSEM_TPM.tsv               # RSEM TPM (if available)
-├── 05_qc/
-│   ├── {sample}_trimmed_fastqc.html        # FastQC HTML report
-│   └── {sample}_trimmed_fastqc.zip         # FastQC data archive
-├── logs/                                    # Step-specific logs
-└── {sample}_ANALYSIS_SUMMARY.txt           # Comprehensive summary
+│   ├── SAMPLE_RSEM_TPM.tsv                      # Expression matrix (all genes)
+│   ├── SAMPLE_miRNAs_only_RSEM.tsv             # miRNA subset ⭐
+│   ├── SAMPLE_GeneType_Barplot.pdf             # Gene type distribution
+│   ├── SAMPLE_RNA_distribution_2subplots.pdf   # RNA composition analysis
+│   └── SAMPLE_top_expressed_genes.pdf          # Top 50 genes (QC)
+├── 06_emapper/
+│   └── SAMPLE_final_unstranded.bw              # Coverage track (IGV)
+└── 07_coverage_plots/
+    ├── SAMPLE_bed_density_heatmap.png          # Coverage over RNA types
+    └── SAMPLE_bed_stacked_profile_meta_gene.png # Meta-gene profile
 ```
 
----
+**Most important file:** `SAMPLE_miRNAs_only_RSEM.tsv` - miRNA quantification in TPM
 
-## Key Pipeline Features
+## Adapter Sequences
 
-### Adapter Trimming (Takara SMARTer smRNA-Seq)
+Change `ADAPTER_SEQUENCE` in `Run_SmallRNA_Pipeline.sh` for your kit:
 
-```bash
-cutadapt -u 3                    # Remove 3bp TSO
-         -a AAAAAAAAAA           # Trim polyA-based adapter
-         -m 15                   # Minimum length 15bp
-         --poly-a                # Additional polyA trimming
-         -j 16                   # 16 threads
-```
+| Library Prep Kit | Adapter Sequence |
+|-----------------|------------------|
+| **Takara SMARTer** (default) | `AAAAAAAAAA` |
+| Illumina TruSeq Small RNA | `TGGAATTCTCGGGTGCCAAGG` |
+| NEBNext Small RNA | `AGATCGGAAGAGCACACGTCT` |
+| QIAseq miRNA | `AACTGTAGGCACCATCAAT` |
 
-### STAR Alignment (Small RNA Optimized)
+## Pipeline Steps
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| `--alignIntronMax` | 1 | Small RNAs lack introns |
-| `--alignEndsType` | EndToEnd | Full read must align |
-| `--outFilterMismatchNmax` | 2 | Max 2 mismatches |
-| `--outFilterMatchNmin` | 16 | Min 16bp match |
-| `--outFilterMatchNminOverLread` | 0.9 | 90% of read must match |
-| `--sjdbOverhang` | 69 | Read length - 1 |
+The pipeline runs 6 steps automatically:
 
-### Quantification Methods
+1. **Build References** (optional, one-time) - Download genome & build indices
+2. **Process Samples** - Trim, align, QC for each FASTQ file
+3. **RSEM Quantification** - EM-based miRNA quantification
+4. **EMapper** - Generate BigWig coverage files
+5. **Visualization** - Coverage density plots
+6. **QC Plots** - Expression analysis plots
 
-**featureCounts (Primary):**
-- Multi-mapping handling with fractional counting (`-M --fraction`)
-- Strand-specific counting (`-s 1`)
-- Gene-level quantification
-- Reliable for small RNA-seq
+All jobs are submitted with automatic dependencies - you don't need to monitor completion.
 
-**RSEM (Optional):**
-- Expectation-Maximization algorithm
-- Handles multi-mapping reads probabilistically
-- May fail due to samtools bgzf bug (pipeline handles gracefully)
+## Monitoring
 
----
-
-## Mouse miRNA Statistics (GENCODE M38)
-
-| Category | Count | Percentage |
-|----------|-------|------------|
-| **Total miRNAs** | 2,201 | 100% |
-| Canonical (Mir*) | 1,189 | 54.0% |
-| Predicted (Gm*) | 1,012 | 46.0% |
-
-**Typical Detection Rate:** 10-20% of annotated miRNAs per sample
-- Depends on tissue type, sequencing depth, RNA quality
-- Range observed: 165-437 miRNAs per sample
-- High biological variability is normal and expected
-
----
-
-## System Requirements
-
-### Software Dependencies
-
-**Cluster Modules:**
-- STAR 2.7.11a
-- RSEM 1.3.3
-- Subread (featureCounts) 2.0.6
-- FastQC 0.12.1
-- samtools 1.17
-
-**Conda Environment (smallrna-tools):**
-- Python 3.9+
-- cutadapt 4.9
-- pandas
-- matplotlib
-- numpy
-
-### Compute Resources
-
-| Step | CPUs | Memory | Time | Partition |
-|------|------|--------|------|-----------|
-| Reference prep | 16 | 120 GB | 2-3 h | cpu |
-| Per-sample analysis | 16 | 80 GB | 1-2 min | cpu |
-| Batch processing | 16/job | 80 GB/job | Parallel | cpu |
-
-### Storage Requirements
-
-- **References:** ~31 GB (genome + indices)
-- **Per sample:** ~500 MB - 2 GB (depth-dependent)
-- **Batch analysis:** Plan accordingly for N samples
-
----
-
-## Installation & Setup
-
-### 1. Clone Repository
+### Check Job Status
 
 ```bash
-cd /path/to/your/workspace
-git clone [repository-url] mouse_smallRNA-pipeline
-cd mouse_smallRNA-pipeline
-```
-
-### 2. Load Required Modules
-
-The pipeline automatically loads required modules via `load_modules.sh`:
-
-```bash
-# Modules loaded automatically:
-# - star/2.7.11a-pgsk3s4
-# - rsem/1.3.3
-# - subread/2.0.6
-# - fastqc/0.12.1
-# - samtools/1.17-xtpk2gu
-
-# Conda environment: smallrna-tools
-```
-
-### 3. Prepare References (First Time Only)
-
-```bash
-sbatch 01_prepare_mouse_references.sh
-```
-
-This downloads and builds:
-- GRCm39 genome (GENCODE)
-- GENCODE M38 gene annotations
-- STAR genome indices
-- RSEM transcriptome indices
-- Gene metadata table
-
----
-
-## Usage Examples
-
-### Example 1: Single Sample Interactive Run
-
-```bash
-# Load environment
-source load_modules.sh
-
-# Run analysis
-bash 02_smRNA_analysis.sh MySample /data/MySample_R1_001.fastq.gz
-
-# Check results
-cat MySample_output/MySample_ANALYSIS_SUMMARY.txt
-less MySample_output/04_expression/MySample_miRNAs_only_featureCounts.tsv
-```
-
-### Example 2: SLURM Batch Submission
-
-```bash
-# Create project directory
-mkdir -p /path/to/project/analysis
-cd /path/to/project/analysis
-
-# Setup
-ln -s /path/to/mouse_smallRNA-pipeline/references ./references
-ln -s /path/to/mouse_smallRNA-pipeline/scripts ./scripts
-mkdir -p logs
-
-# Batch submit
-for fq in /data/fastq_dir/*.fastq.gz; do
-    name=$(basename "$fq" .fastq.gz)
-    sbatch \
-        --output="logs/${name}_%j.log" \
-        --error="logs/${name}_%j.err" \
-        /path/to/mouse_smallRNA-pipeline/02_smRNA_analysis.sh \
-        "$name" "$fq"
-done
-
-# Monitor jobs
+# View all your jobs
 squeue -u $USER
-watch -n 10 'squeue -u $USER'
+
+# Check specific jobs (use IDs from submission output)
+sacct -j JOB_ID1,JOB_ID2 --format=JobID,JobName,State,Elapsed
 ```
 
-### Example 3: Check Results Across Samples
+### View Logs
 
 ```bash
-# Count detected miRNAs per sample
-for dir in *_output; do
-    sample=$(basename "$dir" _output)
-    count=$(grep -v "^GeneID" "$dir/04_expression/${sample}_miRNAs_only_featureCounts.tsv" | wc -l)
-    echo "$sample: $count miRNAs"
-done
+cd OUTPUT_DIR/logs/
 
-# View gene type plots
-ls *_output/04_expression/*_GeneType_Barplot.pdf
+# Individual samples
+tail -f 02_SAMPLE_NAME_*.log
+
+# Batch steps
+tail -f 04_rsem_batch_*.log
+tail -f 05_emapper_*.log
+tail -f 06_viz_*.log
 ```
 
----
+All logs from the master script are saved in `OUTPUT_DIR/logs/` (keeps pipeline directory clean).
 
-## Known Issues & Solutions
+### Check Progress
 
-### Issue 1: RSEM bgzf Compression Failure
-
-**Symptom:**
-```
-samtools: bgzf.c:218: bgzf_hopen: Assertion 'compressBound(BGZF_BLOCK_SIZE) < BGZF_MAX_BLOCK_SIZE' failed
-```
-
-**Cause:** Incompatibility between samtools (compiled with zlib-ng) and bgzf compression
-
-**Impact:** RSEM quantification fails
-
-**Solution:** Pipeline handles this gracefully and continues with featureCounts results (which are accurate and sufficient for most analyses)
-
-### Issue 2: FIFO File Creation Error
-
-**Symptom:**
-```
-STAR: *FATAL ERROR*: could not create FIFO file
-```
-
-**Cause:** Network filesystems may not support FIFO files
-
-**Solution:** Run analysis in local storage (e.g., `/home/user/local/`) rather than network mounts
-
-### Issue 3: Reference Directory Not Found
-
-**Cause:** Pipeline script executed from different directory than expected
-
-**Solution:** Create symlinks in your working directory:
 ```bash
-ln -s /path/to/mouse_smallRNA-pipeline/references ./references
-ln -s /path/to/mouse_smallRNA-pipeline/scripts ./scripts
+# Count processed samples
+ls OUTPUT_DIR/*_output/04_expression/*_RSEM_TPM.tsv | wc -l
+
+# Check which samples completed
+ls -d OUTPUT_DIR/*_output/04_expression/ | xargs -n1 basename | sed 's/_output//'
 ```
 
----
+## Quality Control
 
-## Frequently Asked Questions
+Use the generated plots to assess sample quality:
 
-**Q: Why are only 10-20% of annotated miRNAs detected?**  
-A: This is normal. miRNAs are highly tissue-specific and many predicted miRNAs have low/no expression.
+### 1. Top Expressed Genes Plot
+**File:** `SAMPLE_top_expressed_genes.pdf`
 
-**Q: Why does RSEM fail but the pipeline continues?**  
-A: The bgzf bug is a known issue. featureCounts provides accurate quantification for small RNA-seq.
+**Good sample:**
+- Multiple miRNAs in top 20 genes
+- Diverse gene types
+- No single gene >20% of expression
 
-**Q: Can I run without SLURM?**  
-A: Yes, remove the `#SBATCH` headers and run scripts directly with `bash script.sh ...`
+**Warning signs:**
+- rRNA genes (Rn45s, Rn18s, Rn28s) in top 5 → Poor rRNA depletion
+- Mitochondrial genes (Mt-rnr1, Mt-rnr2) in top 10 → Contamination
+- Hemoglobin genes (Hba, Hbb) → Blood contamination
 
-**Q: How do I analyze samples from different conditions?**  
-A: Run each sample through the pipeline, then use downstream tools (DESeq2, edgeR) for differential expression analysis.
+### 2. RNA Distribution Plot
+**File:** `SAMPLE_RNA_distribution_2subplots.pdf`
 
-**Q: What if my adapters are different?**  
-A: Modify the `cutadapt` command in `02_smRNA_analysis.sh` to match your library preparation kit.
+**Good sample:**
+- miRNAs dominate at TPM > 1
+- rRNA < 10% at higher thresholds
 
----
+**Warning signs:**
+- rRNA > 30% → Poor library quality
+- protein_coding dominates → Wrong library type
+
+### 3. Coverage Plots
+**Files:** `SAMPLE_bed_density_heatmap.png`, `SAMPLE_bed_stacked_profile_meta_gene.png`
+
+**Good sample:**
+- Strong miRNA signal in heatmap
+- Uniform coverage in meta-gene plot
+
+## Common Options
+
+### Skip Visualization (Faster)
+
+```bash
+bash Run_SmallRNA_Pipeline.sh --skip-viz
+```
+
+Saves ~4-8 hours if you don't need coverage plots.
+
+### Process Additional Samples
+
+Just update `INPUT_FASTQ_DIR` to point to new FASTQ files and run again:
+
+```bash
+nano Run_SmallRNA_Pipeline.sh  # Update INPUT_FASTQ_DIR
+bash Run_SmallRNA_Pipeline.sh   # Process new samples
+```
+
+Already-processed samples are automatically skipped.
+
+### Different Library Kit
+
+```bash
+nano Run_SmallRNA_Pipeline.sh
+# Change: ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"  # For Illumina
+bash Run_SmallRNA_Pipeline.sh
+```
+
+## Troubleshooting
+
+### Error: Permission denied creating logs
+
+**Cause:** You ran the script with `sbatch` instead of `bash`
+
+**Fix:** Use `bash` to run the master script:
+```bash
+bash Run_SmallRNA_Pipeline.sh
+```
+
+**NOT** `sbatch Run_SmallRNA_Pipeline.sh` ❌
+
+The master script is an orchestrator that submits jobs - it should not itself be submitted as a job.
+
+### Error: Input directory not found
+
+**Fix:** Edit `INPUT_FASTQ_DIR` in `Run_SmallRNA_Pipeline.sh` to point to your FASTQ directory.
+
+### Error: No FASTQ files found
+
+**Check:**
+- Files have `.fastq.gz` or `.fq.gz` extensions
+- You have read permissions
+- Path is correct
+
+### Error: References not found
+
+**Fix:** Run with `--build-references` first:
+```bash
+bash Run_SmallRNA_Pipeline.sh --build-references
+```
+
+### Job Fails with "DependencyNeverSatisfied"
+
+**Cause:** Previous job in chain failed
+
+**Fix:**
+1. Check which job failed: `sacct -j JOB_ID`
+2. Read its log file in `logs/`
+3. Fix the issue and resubmit
+
+### Out of Memory Errors
+
+**Fix:** Increase memory in `Run_SmallRNA_Pipeline.sh`:
+```bash
+RSEM_BATCH_MEM="64G"    # Increase from 48G
+EMAPPER_BATCH_MEM="64G"  # Increase from 48G
+```
+
+## Resource Requirements
+
+| Step | CPUs | Memory | Time (35 samples) |
+|------|------|--------|-------------------|
+| Reference building | 16 | 120GB | 2-4 hours |
+| Sample processing | 8 | 48GB | 1-2 hours each |
+| RSEM batch | 8 | 48GB | 12-24 hours |
+| EMapper batch | 8 | 48GB | 6-12 hours |
+| Visualization | 4 | 16GB | 4-8 hours |
+
+**Total time:** ~24-48 hours for complete analysis of 35 samples
+
+## Software & Dependencies
+
+**Cluster modules:**
+- STAR 2.7.11a
+- subread 2.0.6 (featureCounts)
+- FastQC 0.12.1
+
+**Conda environment:** `smallrna-tools`
+- Python 3.9+
+- RSEM 1.3.1 (fixed version with zlib-ng 2.2.5)
+- samtools 1.22.1
+- cutadapt 5.2
+- pyBigWig, numba, pysam, psutil
+- deepTools 3.5.6 (for visualization)
+- matplotlib, numpy, pandas
+
+## File Structure
+
+```
+mouse_smallRNA-pipeline/
+├── Run_SmallRNA_Pipeline.sh           # ⭐ Master script - start here
+├── 01_prepare_mouse_references.sh     # Build genome indices
+├── 02_smRNA_analysis.sh               # Process single sample
+├── 04_rerun_rsem_all_samples.sh       # RSEM quantification (batch)
+├── 05_run_emapper_all_samples.sh      # Generate BigWig files (batch)
+├── 06_visualize_coverage.sh           # Coverage plots (batch)
+├── scripts/                           # Python/shell helper scripts
+├── references/                        # Genome, annotations, indices
+└── docs/                              # Detailed documentation
+
+OUTPUT_DIR/                            # Your output location
+├── logs/                              # SLURM job logs (from master script)
+└── SAMPLE_output/                     # Per-sample results
+```
 
 ## Citation
 
 If you use this pipeline, please cite:
 
-1. **GENCODE:** Frankish et al. (2021) GENCODE 2021. *Nucleic Acids Research*. 49:D916-D923
-2. **STAR:** Dobin et al. (2013) STAR: ultrafast universal RNA-seq aligner. *Bioinformatics*. 29(1):15-21
-3. **RSEM:** Li & Dewey (2011) RSEM: accurate transcript quantification from RNA-Seq data. *BMC Bioinformatics*. 12:323
-4. **featureCounts:** Liao et al. (2014) featureCounts: an efficient general purpose program for assigning sequence reads to genomic features. *Bioinformatics*. 30(7):923-930
-5. **Cutadapt:** Martin (2011) Cutadapt removes adapter sequences from high-throughput sequencing reads. *EMBnet.journal*. 17(1):10-12
+- **STAR:** Dobin et al., Bioinformatics 2013
+- **RSEM:** Li & Dewey, BMC Bioinformatics 2011
+- **GENCODE:** Frankish et al., Nucleic Acids Res 2021
+- **deepTools:** Ramírez et al., Nucleic Acids Res 2016
 
----
+## Advanced Usage
 
-## Documentation
+### Custom Resource Allocation
 
-- **README.md** (this file) - Overview and quick start
-- **QUICKSTART.md** - Step-by-step getting started guide
-- **SLURM_GUIDE.md** - Detailed SLURM cluster usage
-- **Methodology_readme.md** - Detailed methodology and pipeline rationale
+Edit resource settings in `Run_SmallRNA_Pipeline.sh`:
 
----
+```bash
+# === RESOURCE ALLOCATION ===
+RSEM_BATCH_CPUS=16        # Increase for faster processing
+RSEM_BATCH_MEM="128G"     # Increase if out-of-memory
+RSEM_BATCH_TIME="48:00:00" # Increase if timing out
+```
 
-## Support
+### Different Genome/Organism
 
-For issues, questions, or contributions:
-- Check the documentation files
-- Review log files in `{sample}_output/logs/`
-- Check SLURM logs in `logs/` directory
+1. Edit URLs in `Run_SmallRNA_Pipeline.sh`:
+```bash
+GENOME_URL="https://path/to/genome.fa.gz"
+GTF_URL="https://path/to/annotation.gtf.gz"
+```
 
----
+2. Rebuild references:
+```bash
+bash Run_SmallRNA_Pipeline.sh --build-references
+```
 
-## Version History
+### Run Individual Scripts
 
-**v1.0** (February 2026)
-- Initial release
-- Mouse GRCm39/GENCODE M38 support
-- Takara SMARTer smRNA-Seq adapter handling
-- SLURM cluster optimization
-- Gene type barplot generation
-- Comprehensive error handling
-- miRNA-specific extraction
+You can still run scripts independently:
 
----
+```bash
+# Process one sample
+bash 02_smRNA_analysis.sh SAMPLE input.fastq.gz --threads 8 --adapter AAAA
+
+# Run RSEM batch only
+sbatch 04_rerun_rsem_all_samples.sh
+
+# Run EMapper only
+sbatch 05_run_emapper_all_samples.sh
+```
+
+## Getting Help
+
+### Documentation
+
+- **This README:** General usage and quick start
+- **`docs/MASTER_SCRIPT_GUIDE.md`:** Complete master script reference
+- **`docs/detailed/`:** Technical documentation and troubleshooting
+
+### Check Logs
+
+Most issues can be diagnosed from log files:
+
+```bash
+# SLURM job logs
+ls logs/*.log
+
+# Pipeline-specific logs
+ls OUTPUT_DIR/SAMPLE_output/logs/*.log
+
+# Coverage plot logs
+ls OUTPUT_DIR/SAMPLE_output/07_coverage_plots/*.log
+```
+
+### Common Log Locations
+
+All logs are in: `OUTPUT_DIR/logs/`
+
+- **Reference building:** `01_build_refs_*.log`
+- **Sample processing:** `02_SAMPLE_*.log`
+- **RSEM batch:** `04_rsem_batch_*.log`
+- **EMapper:** `05_emapper_*.log`
+- **Visualization:** `06_viz_*.log`
+
+Individual scripts also create per-sample logs in: `SAMPLE_output/logs/`
+
+## Key Features
+
+✅ **Single command execution** - Run entire pipeline with one command  
+✅ **Automatic dependencies** - No manual job coordination needed  
+✅ **Smart skipping** - Already-processed samples are skipped  
+✅ **EM-based quantification** - Proper handling of multi-mapping miRNAs  
+✅ **Comprehensive QC** - Multiple quality control plots  
+✅ **Easy configuration** - All settings in one place  
+✅ **Adapter flexibility** - Easy to change for different kits  
+✅ **Coverage visualization** - BigWig files + deepTools plots  
+✅ **Latest annotations** - GRCm39/GENCODE vM38 (Sept 2025)  
+
+## Pipeline Outputs Explained
+
+### Expression Files
+
+**`SAMPLE_RSEM_TPM.tsv`** - All genes with columns:
+- `GeneID`: Ensembl gene ID
+- `GeneSymbol`: Gene name
+- `GeneType`: Gene biotype (miRNA, protein_coding, etc.)
+- `ReadCounts`: Raw read counts
+- `TPM`: Transcripts Per Million (normalized)
+
+**`SAMPLE_miRNAs_only_RSEM.tsv`** - Filtered to miRNAs only
+
+### Coverage Files
+
+**`SAMPLE_final_unstranded.bw`** - BigWig coverage track
+- Load in IGV or UCSC Genome Browser
+- Shows read coverage across genome
+- Single-base resolution
+
+### QC Plots
+
+**Gene Type Barplot** - Bar chart showing counts and percentages of each gene type
+
+**RNA Distribution** - 4-panel plot comparing:
+- Top: Expression-weighted (TPM) filtering
+- Bottom: Count-based filtering
+- Shows how RNA composition changes with thresholds
+
+**Top Expressed Genes** - Horizontal bar plot of 50 most abundant genes
+- Colored by gene type
+- Helps identify contamination or problems
+
+**Coverage Heatmap** - Shows read coverage distribution across RNA types
+
+**Meta-gene Profile** - Shows average coverage from TSS to TES
+
+## Version Info
+
+**Pipeline Version:** 2.0  
+**Last Updated:** February 17, 2026  
+**Genome:** GRCm39 (mm39)  
+**Annotations:** GENCODE vM38  
+**Tested on:** SLURM cluster with cpu/hmem/nice partitions  
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - Free to use and modify
+
+## Authors
+
+Developed for the Dong Lab bioinformatics core facility.
 
 ---
 
-## Acknowledgments
-
-Pipeline design inspired by standard RNA-seq best practices and optimized for small RNA sequencing analysis. Special focus on miRNA detection and quantification in mouse models.
-
-**Development:** [Your name/institution]  
-**Date:** February 2026  
-**Contact:** [Your email]
+**For detailed documentation, see `docs/` directory**  
+**For troubleshooting, check log files first, then see `docs/MASTER_SCRIPT_GUIDE.md`**

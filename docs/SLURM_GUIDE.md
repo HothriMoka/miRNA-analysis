@@ -102,7 +102,7 @@ cd /home/hmoka2/mnt/network/dataexchange/scott/genomics/nextseq2000/251017_VH004
 for fq in *_R1_001.fastq.gz; do
   sample=$(basename $fq | sed 's/_R1_001.fastq.gz$//')
   sbatch /home/hmoka2/mnt/storage/bioinformatics/users/hmoka/EVscope-mirna/mouse_smRNA_pipeline/02_smRNA_analysis.sh \
-    $sample $fq --threads 20
+    $sample $fq --threads 16
 done
 ```
 

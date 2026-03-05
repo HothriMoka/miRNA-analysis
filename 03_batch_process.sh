@@ -78,7 +78,7 @@ Required:
   input_directory    Directory containing FASTQ files (.fastq.gz or .fq.gz)
 
 Options:
-  --threads INT      Threads per sample (default: 20)
+  --threads INT      Threads per sample (default: 16)
   --parallel         Run samples in parallel (default: sequential)
   --max-jobs INT     Max parallel jobs (default: 3)
   --pattern STR      File pattern (default: "*_R1_001.fastq.gz")
