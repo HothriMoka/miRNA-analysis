@@ -36,7 +36,7 @@ if [ -z "${OUTPUT_BASE}" ]; then
 fi
 
 echo "========================================"
-echo "Running EMapper on All Samples"
+echo "Running EMapper on Samples"
 echo "========================================"
 echo "Output directory: ${OUTPUT_BASE}"
 echo "Threads: ${THREADS}"
@@ -53,22 +53,25 @@ echo "✓ Python: $(which python)"
 # Verify dependencies
 python -c "import pyBigWig, numba, pysam, psutil, numpy; print('✓ All dependencies available')"
 
-# Find all sample output directories
-SAMPLE_DIRS=$(find ${OUTPUT_BASE} -maxdepth 1 -type d -name "*_output" | sort)
-TOTAL_SAMPLES=$(echo "${SAMPLE_DIRS}" | wc -l)
+# Build array of sample output directories
+mapfile -t SAMPLE_DIRS_ARRAY < <(find "${OUTPUT_BASE}" -maxdepth 1 -type d -name "*_output" | sort)
+TOTAL_SAMPLES=${#SAMPLE_DIRS_ARRAY[@]}
 
 echo ""
 echo "Found ${TOTAL_SAMPLES} sample directories"
 echo ""
 
-# Counter
-SUCCESS_COUNT=0
-FAILED_COUNT=0
-FAILED_SAMPLES=()
+if [ "${TOTAL_SAMPLES}" -eq 0 ]; then
+    echo "No sample output directories found in ${OUTPUT_BASE}"
+    exit 1
+fi
 
-# Process each sample
-for SAMPLE_DIR in ${SAMPLE_DIRS}; do
-    SAMPLE_NAME=$(basename ${SAMPLE_DIR} _output)
+# Helper to run EMapper for a single sample directory
+run_emapper_for_sample() {
+    local SAMPLE_DIR="$1"
+    local SAMPLE_NAME
+
+    SAMPLE_NAME=$(basename "${SAMPLE_DIR}" _output)
     
     echo "========================================"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Processing: ${SAMPLE_NAME}"
@@ -82,9 +85,7 @@ for SAMPLE_DIR in ${SAMPLE_DIRS}; do
     # Check if BAM exists
     if [ ! -f "${BAM_FILE}" ]; then
         echo "✗ ERROR: BAM file not found: ${BAM_FILE}"
-        FAILED_COUNT=$((FAILED_COUNT + 1))
-        FAILED_SAMPLES+=("${SAMPLE_NAME}")
-        continue
+        return 1
     fi
     
     # Create output directory
@@ -103,15 +104,14 @@ for SAMPLE_DIR in ${SAMPLE_DIRS}; do
     fi
     
     samtools sort -n -@ ${THREADS} -o "${NAME_SORTED_BAM}" "${BAM_FILE}"
+    SORT_EXIT=$?
     
-    if [ $? -ne 0 ]; then
+    if [ ${SORT_EXIT} -ne 0 ]; then
         echo "✗ ERROR: BAM sorting failed"
-        FAILED_COUNT=$((FAILED_COUNT + 1))
-        FAILED_SAMPLES+=("${SAMPLE_NAME}")
-        continue
+        return 1
     fi
     
-    echo "    ✓ Name-sorted BAM created ($(du -h ${NAME_SORTED_BAM} | cut -f1))"
+    echo "    ✓ Name-sorted BAM created ($(du -h "${NAME_SORTED_BAM}" | cut -f1))"
     
     # Step 2: Run EMapper
     echo "  [2/2] Running EMapper EM algorithm..."
@@ -140,15 +140,50 @@ for SAMPLE_DIR in ${SAMPLE_DIRS}; do
             echo "    Cleaning up temporary files..."
             rm -f "${NAME_SORTED_BAM}"
             
-            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            return 0
         else
             echo "  ✗ ERROR: EMapper completed but no BigWig files generated"
-            FAILED_COUNT=$((FAILED_COUNT + 1))
-            FAILED_SAMPLES+=("${SAMPLE_NAME}")
+            return 1
         fi
     else
         echo "  ✗ ERROR: EMapper failed with exit code ${EMAPPER_EXIT}"
         echo "    Check log: ${EMAPPER_DIR}/${SAMPLE_NAME}_EMapper.log"
+        return 1
+    fi
+}
+
+# If running as a SLURM array task, process only the assigned sample
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    INDEX=$((SLURM_ARRAY_TASK_ID - 1))
+    if [ ${INDEX} -lt 0 ] || [ ${INDEX} -ge ${TOTAL_SAMPLES} ]; then
+        echo "ERROR: SLURM_ARRAY_TASK_ID ${SLURM_ARRAY_TASK_ID} out of range (1..${TOTAL_SAMPLES})"
+        exit 1
+    fi
+
+    SAMPLE_DIR="${SAMPLE_DIRS_ARRAY[INDEX]}"
+    echo "Processing array task ${SLURM_ARRAY_TASK_ID}/${TOTAL_SAMPLES}: ${SAMPLE_DIR}"
+    echo ""
+
+    if run_emapper_for_sample "${SAMPLE_DIR}"; then
+        echo "Array task ${SLURM_ARRAY_TASK_ID} completed successfully."
+        exit 0
+    else
+        echo "Array task ${SLURM_ARRAY_TASK_ID} failed."
+        exit 1
+    fi
+fi
+
+# Non-array mode: process all samples in a single job (legacy behaviour)
+SUCCESS_COUNT=0
+FAILED_COUNT=0
+FAILED_SAMPLES=()
+
+for SAMPLE_DIR in "${SAMPLE_DIRS_ARRAY[@]}"; do
+    SAMPLE_NAME=$(basename "${SAMPLE_DIR}" _output)
+
+    if run_emapper_for_sample "${SAMPLE_DIR}"; then
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+    else
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SAMPLES+=("${SAMPLE_NAME}")
     fi

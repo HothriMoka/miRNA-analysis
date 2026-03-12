@@ -9,11 +9,12 @@
 # ⚠️  IMPORTANT: Run with bash, NOT sbatch!
 #
 # Usage:
-#   bash Run_SmallRNA_Pipeline.sh [--build-references] [--skip-viz]
+#   bash Run_SmallRNA_Pipeline.sh [--build-references] [--skip-viz] [--sample NAME]
 #
 # Options:
 #   --build-references    Build genome references (Step 01) - only needed once
 #   --skip-viz            Skip coverage visualization (faster completion)
+#   --sample NAME         Run only this sample (basename without .fastq.gz, e.g. 204913_combined_R1_001)
 #   --help                Show this help message
 #
 # DO NOT USE:
@@ -65,20 +66,20 @@ GENOME_URL="https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M3
 GTF_URL="https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M38/gencode.vM38.annotation.gtf.gz"
 
 # === ADAPTER SEQUENCE ===
-# ⚠️  IMPORTANT: Change this based on your library prep kit!
-# This is the 3' adapter sequence that will be trimmed from your reads.
+# ⚠️  IMPORTANT: Set this to match YOUR library prep kit. Wrong adapter = poor trimming = low miRNA mapping.
+# This is the 3' adapter sequence that cutadapt will trim from your reads.
 #
-# Choose the appropriate adapter for your kit:
+# Common options (uncomment the one that matches your kit):
 
-# Illumina TruSeq Small RNA (most common)
+# TruSeq Universal Adapter (used by many Illumina small RNA / RNA-seq kits)
 ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
 
-# Other common adapters (uncomment the one you need):
-# ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCT"           # NEBNext Small RNA
-# ADAPTER_SEQUENCE="AAAAAAAAAA"                       # Takara SMARTer (polyA tail)
-# ADAPTER_SEQUENCE="AACTGTAGGCACCATCAAT"             # QIAseq miRNA
-# ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"           # Illumina Small RNA v1.5
-# ADAPTER_SEQUENCE="YOUR_CUSTOM_ADAPTER_HERE"        # Custom adapter
+# Other common adapters:
+# ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"           # Illumina TruSeq Small RNA Index (v1.5)
+# ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCT"          # NEBNext Small RNA
+# ADAPTER_SEQUENCE="AAAAAAAAAA"                      # Takara SMARTer (polyA tail)
+# ADAPTER_SEQUENCE="AACTGTAGGCACCATCAAT"            # QIAseq miRNA
+# ADAPTER_SEQUENCE="YOUR_CUSTOM_ADAPTER_HERE"       # Custom – check kit manual or FastQC overrepresented sequences
 #
 # To find your adapter sequence:
 # 1. Check your library prep kit documentation
@@ -101,14 +102,14 @@ RSEM_BATCH_TIME="24:00:00"
 
 EMAPPER_BATCH_CPUS=8
 EMAPPER_BATCH_MEM="96G"   # EMapper (EM + pyBigWig) requires more memory for 35 samples
-EMAPPER_BATCH_TIME="12:00:00"
+EMAPPER_BATCH_TIME="36:00:00"
 
 VIZ_BATCH_CPUS=4
 VIZ_BATCH_MEM="32G"
 VIZ_BATCH_TIME="8:00:00"
 
 # === SLURM PARTITION ===
-PARTITION="hmem"  # Options: cpu, hmem, nice
+PARTITION="cpu"   # Use cpu for idle compute nodes; hmem has only 1 node (often busy)
 
 ################################################################################
 # END OF CONFIGURATION - DO NOT EDIT BELOW THIS LINE
@@ -120,6 +121,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parse command line arguments
 BUILD_REFS=false
 SKIP_VIZ=false
+TEST_SAMPLE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -130,6 +132,10 @@ while [[ $# -gt 0 ]]; do
         --skip-viz)
             SKIP_VIZ=true
             shift
+            ;;
+        --sample)
+            TEST_SAMPLE="$2"
+            shift 2
             ;;
         --help)
             head -n 20 "$0" | grep "^#" | sed 's/^# *//'
@@ -169,6 +175,7 @@ echo ""
 echo "Options:"
 echo "  Build references: ${BUILD_REFS}"
 echo "  Skip visualization: ${SKIP_VIZ}"
+echo "  Test sample only: ${TEST_SAMPLE:-all}"
 echo "================================================================================"
 echo ""
 
@@ -269,6 +276,11 @@ for FASTQ in "${INPUT_FASTQ_DIR}"/*.{fastq.gz,fq.gz}; do
     
     # Extract sample name (remove path and extension)
     SAMPLE_NAME=$(basename "$FASTQ" | sed -E 's/\.(fastq|fq)\.gz$//')
+    
+    # If --sample was set, only process that sample
+    if [ -n "${TEST_SAMPLE}" ] && [ "${SAMPLE_NAME}" != "${TEST_SAMPLE}" ]; then
+        continue
+    fi
     
     # Check if already processed (use featureCounts TPM as completion marker;
     # RSEM TPM is optional and may not exist if RSEM was skipped)
@@ -375,18 +387,27 @@ echo ""
 echo "=== STEP 05: EMapper Coverage Calculation ==="
 echo ""
 
-echo "Submitting EMapper job..."
+echo "Submitting EMapper jobs as a SLURM array (one task per sample)..."
+
+# Determine number of samples for EMapper
+EMAPPER_SAMPLE_COUNT=$(find "${OUTPUT_BASE_DIR}" -maxdepth 1 -type d -name "*_output" | wc -l)
+
+if [ "${EMAPPER_SAMPLE_COUNT}" -eq 0 ]; then
+    echo "ERROR: No sample output directories found for EMapper in ${OUTPUT_BASE_DIR}"
+    exit 1
+fi
 
 # Create temporary wrapper script
 cat > "${SCRIPT_DIR}/.tmp_emapper.sh" << EOF
 #!/bin/bash
 #SBATCH --job-name=emapper
-#SBATCH --output=${LOG_DIR}/05_emapper_%j.log
-#SBATCH --error=${LOG_DIR}/05_emapper_%j.err
+#SBATCH --output=${LOG_DIR}/05_emapper_%A_%a.log
+#SBATCH --error=${LOG_DIR}/05_emapper_%A_%a.err
 #SBATCH --time=${EMAPPER_BATCH_TIME}
 #SBATCH --cpus-per-task=${EMAPPER_BATCH_CPUS}
 #SBATCH --mem=${EMAPPER_BATCH_MEM}
 #SBATCH --partition=${PARTITION}
+#SBATCH --array=1-${EMAPPER_SAMPLE_COUNT}
 
 # Run script from correct directory
 cd ${SCRIPT_DIR}

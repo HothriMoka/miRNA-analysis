@@ -90,8 +90,48 @@ for dir in *_output; do
     RSEM_RESULTS="${SAMPLE_DIR}/03_counts/${SAMPLE_NAME}_RSEM.genes.results"
     
     if [ -f "$TRANSCRIPTOME_BAM" ] && [ -f "$RSEM_RESULTS" ] && [ -s "$RSEM_RESULTS" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✓ ${SAMPLE_NAME} - Already complete, skipping"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✓ ${SAMPLE_NAME} - RSEM already complete"
         SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+
+        # Regenerate plots if missing (prefer featureCounts TPM matrices)
+        FC_TPM="${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_featureCounts_TPM.tsv"
+        FC_FULL_TPM="${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_featureCounts_all_genes_TPM.tsv"
+        PLOT_INPUT="${FC_FULL_TPM}"
+        if [ ! -f "${PLOT_INPUT}" ]; then
+            PLOT_INPUT="${FC_TPM}"
+        fi
+
+        if [ -f "${PLOT_INPUT}" ]; then
+            RNA_DIST_OUTPUT="${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_RNA_distribution_2subplots"
+            TOP_GENES_PDF="${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_top_expressed_genes.pdf"
+            BARPLOT_OUTPUT="${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_GeneType_Barplot.pdf"
+
+            if [ ! -f "${RNA_DIST_OUTPUT}.pdf" ]; then
+                echo "    Regenerating RNA distribution plot (featureCounts-based)..."
+                python ${SCRIPTS_DIR}/plot_RNA_distribution_2subplots.py \
+                    --input ${PLOT_INPUT} \
+                    --output ${RNA_DIST_OUTPUT} \
+                    --sample_name ${SAMPLE_NAME} \
+                    > ${SAMPLE_DIR}/logs/rna_distribution.log 2>&1 && echo "      ✓ RNA distribution plot generated" || echo "      ⚠ RNA distribution plot failed"
+            fi
+            if [ ! -f "${TOP_GENES_PDF}" ]; then
+                echo "    Regenerating top expressed genes plot (featureCounts-based)..."
+                python ${SCRIPTS_DIR}/plot_top_expressed_genes.py \
+                    --input ${PLOT_INPUT} \
+                    --output_pdf ${TOP_GENES_PDF} \
+                    --output_png ${SAMPLE_DIR}/04_expression/${SAMPLE_NAME}_top_expressed_genes.png \
+                    --genes_per_type 3 --total_genes 50 --sample_name ${SAMPLE_NAME} \
+                    > ${SAMPLE_DIR}/logs/top_genes.log 2>&1 && echo "      ✓ Top genes plot generated" || echo "      ⚠ Top genes plot failed"
+            fi
+            if [ ! -f "${BARPLOT_OUTPUT}" ]; then
+                echo "    Regenerating gene type barplot (featureCounts-based)..."
+                python ${SCRIPTS_DIR}/plot_genetype_barplot.py \
+                    --input ${PLOT_INPUT} --output ${BARPLOT_OUTPUT} \
+                    --top 15 --title \"Gene Type Distribution - ${SAMPLE_NAME}\" --min_tpm 0 \
+                    > ${SAMPLE_DIR}/logs/barplot.log 2>&1 && echo "      ✓ Gene type barplot generated" || echo "      ⚠ Gene type barplot failed"
+            fi
+        fi
+        echo ""
         continue
     fi
     
@@ -269,12 +309,12 @@ fi
 echo ""
 
 if [ ${FAILED_COUNT} -gt 0 ]; then
-    echo "✗ Some samples failed. Check logs above."
-    exit 1
+    echo "✗ Some samples had RSEM failures or TPM conversion issues. Check logs above."
 else
     echo "✓ All samples processed successfully!"
-    echo ""
-    echo "Next step: Run EMapper to generate BigWig files"
-    echo "  sbatch 05_run_emapper_all_samples.sh"
-    exit 0
 fi
+
+echo ""
+echo "RSEM re-run step completed (non-fatal failures allowed)."
+echo "Next step in full pipeline: EMapper and coverage visualization will still run."
+exit 0

@@ -158,6 +158,12 @@ echo "=== Step 3: Building STAR Index ==="
 echo "This may take 30-60 minutes..."
 
 if [[ ! -f "${REF_DIR}/indices/STAR/SAindex" ]]; then
+    # If we are (re)building STAR, remove RSEM index so it gets rebuilt too.
+    # STAR transcriptome BAM and RSEM must use matching transcriptome/GTF.
+    if [[ -f "${REF_DIR}/indices/RSEM/RSEM_REF_MM39.grp" ]]; then
+        echo "Removing existing RSEM index so it will be rebuilt to match STAR."
+        rm -f "${REF_DIR}/indices/RSEM/RSEM_REF_MM39."*
+    fi
     STAR --runMode genomeGenerate \
         --genomeDir ${REF_DIR}/indices/STAR \
         --genomeFastaFiles ${REF_DIR}/genome/GRCm39.genome.fa \
@@ -173,7 +179,7 @@ else
 fi
 
 # ============================================================================
-# BUILD RSEM INDEX
+# BUILD RSEM INDEX (must match STAR's GTF – rebuilt automatically if STAR was rebuilt)
 # ============================================================================
 
 echo ""

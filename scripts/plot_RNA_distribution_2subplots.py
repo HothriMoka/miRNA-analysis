@@ -92,6 +92,10 @@ def read_expression_matrix(file_path):
     # Drop rows with invalid data
     df = df.dropna(subset=['ReadCounts', 'Norm_Expr', 'GeneType'])
     
+    # Restrict to genes with sufficient support in this sample
+    # (only keep genes with >10 raw counts)
+    df = df[df['ReadCounts'] > 10].copy()
+    
     return df
 
 def generate_filter_data_by_metric(df, metric, thresholds):

@@ -28,14 +28,14 @@ INPUT_FASTQ_DIR="/path/to/your/fastq/files"
 # Where to save results
 OUTPUT_BASE_DIR="/home/hmoka2/mnt/storage/bioinformatics/users/hmoka/mouse_miRNA"
 
-# ⚠️ IMPORTANT: Set the adapter for YOUR library prep kit!
-ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # Illumina TruSeq (most common)
+# ⚠️ IMPORTANT: Set the adapter for YOUR library prep kit! Wrong adapter → poor trimming → low miRNA mapping.
+ADAPTER_SEQUENCE="AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"  # TruSeq Universal (many kits)
 
-# Other options provided in the script:
-# - NEBNext Small RNA:        AGATCGGAAGAGCACACGTCT
-# - Takara SMARTer:           AAAAAAAAAA
-# - QIAseq miRNA:             AACTGTAGGCACCATCAAT
-# - Illumina Small RNA v1.5:  TGGAATTCTCGGGTGCCAAGG
+# Other options in Run_SmallRNA_Pipeline.sh:
+# - Illumina TruSeq Small RNA Index:  TGGAATTCTCGGGTGCCAAGG
+# - NEBNext Small RNA:                AGATCGGAAGAGCACACGTCT
+# - Takara SMARTer (polyA):           AAAAAAAAAA
+# - QIAseq miRNA:                     AACTGTAGGCACCATCAAT
 ```
 
 ### 2. First Time: Build References
@@ -86,14 +86,17 @@ SAMPLE_NAME_output/
 
 ## Adapter Sequences
 
-Change `ADAPTER_SEQUENCE` in `Run_SmallRNA_Pipeline.sh` for your kit:
+Set `ADAPTER_SEQUENCE` in `Run_SmallRNA_Pipeline.sh` to match your library prep kit. There is no single "default" — the wrong adapter causes failed trimming and very low miRNA mapping.
 
 | Library Prep Kit | Adapter Sequence |
 |-----------------|------------------|
-| **Takara SMARTer** (default) | `AAAAAAAAAA` |
-| Illumina TruSeq Small RNA | `TGGAATTCTCGGGTGCCAAGG` |
+| TruSeq Universal (many Illumina kits) | `AGATCGGAAGAGCACACGTCTGAACTCCAGTCA` |
+| Illumina TruSeq Small RNA Index v1.5 | `TGGAATTCTCGGGTGCCAAGG` |
 | NEBNext Small RNA | `AGATCGGAAGAGCACACGTCT` |
+| Takara SMARTer (polyA tail) | `AAAAAAAAAA` |
 | QIAseq miRNA | `AACTGTAGGCACCATCAAT` |
+
+Check your kit manual or FastQC "Overrepresented sequences" if unsure.
 
 ## Pipeline Steps
 
@@ -258,6 +261,27 @@ bash Run_SmallRNA_Pipeline.sh --build-references
 ```bash
 RSEM_BATCH_MEM="64G"    # Increase from 48G
 EMAPPER_BATCH_MEM="64G"  # Increase from 48G
+```
+
+### Low miRNA mapping / very few miRNAs detected
+
+If most reads are unmapped or miRNA counts are near zero, check the following (in order).
+
+**If STAR's Log.final.out shows "Average input read length" ~30–31 nt (instead of ~18–24 nt)** and/or **"Number of splices" > 0**: your reads are reaching STAR still carrying adapter (trimming failed or wrong adapter) or the run used an old STAR command without miRNA flags. Fix: (1) Set `ADAPTER_SEQUENCE` in `Run_SmallRNA_Pipeline.sh` to match your **actual** library kit (see table below). TruSeq Universal = `AGATCGGAAGAGC...`; Takara SMARTer = `AAAAAAAAAA`; Illumina TruSeq Small RNA Index = `TGGAATTCTCGGGTGCCAAGG`. (2) Delete the sample's `01_trimmed` and `02_aligned` folders and re-run so cutadapt and STAR run again with the correct adapter and current script (which has `--alignIntronMax 1` and no splicing).
+
+1. **Adapter sequence** — Wrong adapter is the most common cause. Set `ADAPTER_SEQUENCE` in `Run_SmallRNA_Pipeline.sh` to match your library kit (see Adapter Sequences table). TruSeq Universal (`AGATCGGAAGAGC...`) is used by many kits; Illumina TruSeq Small RNA Index is `TGGAATTCTCGGGTGCCAAGG`. Takara SMARTer uses `AAAAAAAAAA`. Check your kit manual or FastQC "Overrepresented sequences".
+
+2. **Cutadapt output** — In `SAMPLE_output/01_trimmed/SAMPLE_cutadapt_report.txt` check how many reads passed trimming. If almost all reads are "too long" or "no adapter", the adapter is wrong. Pipeline uses `-m 15 -M 35` (keeps 15–35 nt), appropriate for miRNAs (18–24 nt). If STAR sees ~31 nt average input, adapter trimming did not work — fix the adapter and re-run from trimming.
+
+3. **STAR alignment** — In `SAMPLE_output/02_aligned/SAMPLE_Log.final.out` check "Uniquely mapped" and "unmapped: too many mismatches". The pipeline uses STAR settings tuned for ~22 nt miRNAs: `--alignIntronMax 1` (no splicing), `--outFilterScoreMinOverLread 0`, `--outFilterMatchNminOverLread 0` (critical for short reads; default 66% would discard many miRNAs), `--outFilterMismatchNmax 1`, `--alignMatesGapMax 50`, `--outFilterMultimapNmax 50`. The index is built in Step 01 with the **full** GENCODE GTF; miRNA counts come from gene type in the metadata.
+
+4. **STAR and RSEM indices in sync** — If you rebuilt the STAR index, the pipeline now rebuilds the RSEM index in the same run so both use the same GTF. If you ever rebuilt only STAR by hand, remove the RSEM index and re-run reference building so RSEM matches.
+
+**Quick checks:**
+```bash
+grep "ADAPTER_SEQUENCE" Run_SmallRNA_Pipeline.sh
+cat OUTPUT/SAMPLE_output/01_trimmed/SAMPLE_cutadapt_report.txt
+grep -E "mapped|unmapped" OUTPUT/SAMPLE_output/02_aligned/SAMPLE_Log.final.out
 ```
 
 ## Resource Requirements
